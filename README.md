@@ -6,7 +6,9 @@ in the Linux kernel — before the network stack processes it.
 
 ## Architecture
 
-
+NIC → XDP Hook → Packet Parser → Ring Buffer → Go Userspace
+↓
+Proto Stats Map
 
 ## Features
 
