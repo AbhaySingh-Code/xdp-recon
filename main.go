@@ -202,6 +202,33 @@ func main() {
 		}
 	}()
 
+	// ----------------------------------------------------------
+	// 5.5 Alert reader - prints message when IP is auto blocked
+	// ----------------------------------------------------------
+	alertsMap := coll.Maps["alerts"]
+	go func() {
+		ard, err := ringbuf.NewReader(alertsMap)
+		if err != nil {
+			log.Fatalf("alerts ringbuf: %v", err)
+		}
+		defer ard.Close()
+
+		for {
+			record, err := ard.Read()
+			if err != nil {
+				break
+			}
+
+			var srcIP uint32
+			if err := binary.Read(bytes.NewReader(record.RawSample), binary.LittleEndian, &srcIP); err != nil {
+				continue
+			}
+
+			ip := intToIP(srcIP)
+			fmt.Printf("\n ** ALERT : PORT SCAN DETECTED from %s - AUTO BLOCKED ****\n", ip)
+		}
+	}()
+
 	// -------------------------------------------------------
 	// 6. Main loop — read events from ringbuf and print them
 	// -------------------------------------------------------

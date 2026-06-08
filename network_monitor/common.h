@@ -7,6 +7,15 @@
 #define PROTO_UDP 17
 #define PROTO_ICMPv6 58
 
+#define EVENT_PACKET 0
+#define EVENT_ALERT 1
+
+struct alert_event {
+    __u32 src_ip;
+    __u8 type;
+    __u8 pad[3];
+};
+
 //Packet event sent to userspace via ringbuf
 struct pkt_event {
     __u32 src_ip;
