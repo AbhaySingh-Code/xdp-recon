@@ -58,7 +58,7 @@ type BlockKey struct {
 // Network byte order is big-endian, so we convert accordingly
 func intToIP(n uint32) net.IP {
 	ip := make(net.IP, 4)
-	binary.BigEndian.PutUint32(ip, n)
+	binary.LittleEndian.PutUint32(ip, n)
 	return ip
 }
 
@@ -154,6 +154,8 @@ func main() {
 		"PROTO", "SRC", "DST", "LEN", "FLAGS")
 	fmt.Println("─────────────────────────────────────────────────────────")
 
+	// Add tc monitor execution
+	go runTCMonitor(ifaceName)
 
 	// block an IP
 	err = blockCidr("8.8.8.8/32", coll.Maps["blocklist"])
