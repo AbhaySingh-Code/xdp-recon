@@ -48,6 +48,12 @@ const (
 	PROTO_ICMPv6 = 58
 )
 
+// 4.5 Code to block certain ip's
+type BlockKey struct {
+	PrefixLen uint32
+	Addr uint32
+}
+
 // intToIP converts a uint32 (network byte order) to a net.IP
 // Network byte order is big-endian, so we convert accordingly
 func intToIP(n uint32) net.IP {
@@ -148,6 +154,14 @@ func main() {
 		"PROTO", "SRC", "DST", "LEN", "FLAGS")
 	fmt.Println("─────────────────────────────────────────────────────────")
 
+
+	// block an IP
+	err = blockCidr("8.8.8.8/32", coll.Maps["blocklist"])
+	if err != nil {
+		log.Fatalf("block: %v", err)
+	}
+	//fmt.Println("Blocked 1.1.1.1")
+
 	// -------------------------------------------------------
 	// 3. Open ringbuf reader
 	// -------------------------------------------------------
@@ -172,6 +186,7 @@ func main() {
 		fmt.Println("\nDetaching XDP and exiting...")
 		rd.Close()
 	}()
+	
 
 	// -------------------------------------------------------
 	// 5. Stats goroutine — print summary every 10 seconds
@@ -262,4 +277,21 @@ func attachXDP(ifindex int, prog *ebpf.Program) (interface{ Close() error }, err
 	// Use netlink to attach XDP
 	// cilium/ebpf provides this via the link package
 	return attachXDPLink(ifindex, prog)
+}
+
+
+func blockCidr(cidr string, blocklist *ebpf.Map) error {
+	ip, network, err := net.ParseCIDR(cidr)
+	if err != nil {
+		fmt.Println("Invalid cidr %v", err)
+	}
+
+	prefixLen, _ := network.Mask.Size()
+
+	var key BlockKey
+	key.PrefixLen = uint32(prefixLen)
+	key.Addr = binary.BigEndian.Uint32(ip.To4())
+
+	value := uint64(1)
+	return blocklist.Put(unsafe.Pointer(&key), unsafe.Pointer(&value))
 }

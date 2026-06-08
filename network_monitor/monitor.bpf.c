@@ -18,6 +18,14 @@ struct {
     __type(value, __u64);
 } proto_stats SEC(".maps");
 
+struct {
+    __uint(type, BPF_MAP_TYPE_LPM_TRIE);
+    __uint(max_entries, 1024);
+    __uint(map_flags, BPF_F_NO_PREALLOC);
+    __type(key, struct lpm_key);
+    __type(value, __u64);
+} blocklist SEC(".maps");
+
 #include "parser.h"
 
 SEC("xdp")
@@ -30,6 +38,15 @@ int xdp_monitor(struct xdp_md *ctx){
     int ret = parse_packet(data, data_end, &event);
     if (ret != PARSE_OK)
         return XDP_PASS;    // always pass - we're monitoring, not blocking (yet)
+
+
+    struct lpm_key bl_key;
+
+    bl_key.prefixlen = 32;
+    bl_key.addr = event.src_ip;
+
+    if (bpf_map_lookup_elem(&blocklist, &bl_key))
+        return XDP_DROP;
 
     // Update per protocol counter
     __u32 proto_key = event.protocol;

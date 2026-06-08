@@ -20,4 +20,9 @@ struct pkt_event {
     __u32 pkt_len;
 };
 
+struct lpm_key {
+    __u32 prefixlen;
+    __u32 addr;
+};
+
 #endif
