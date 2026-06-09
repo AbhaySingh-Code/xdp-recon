@@ -12,7 +12,7 @@ Proto Stats Map
 
 ## Features
 
-- **XDP ingress capture** — runs before the kernel network stack
+- **XDP & TC ingress capture** — runs before the kernel network stack
 - **Full packet parsing** — Ethernet → IPv4 → TCP/UDP/ICMP
 - **Per-protocol statistics** — live packet counts per protocol
 - **Ring buffer events** — zero-copy event delivery to userspace
