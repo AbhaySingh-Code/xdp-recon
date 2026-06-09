@@ -16,6 +16,21 @@ struct alert_event {
     __u8 pad[3];
 };
 
+//Struct for passing go command line arguments to bpf code
+struct scan_config {
+    __u64 time_windows_ns; //Time windows in nanoseconds
+    __u32 threshold;
+    __u8 auto_block;
+    __u8 pad[3];
+};
+
+struct scan_entry {
+    __u64 first_seen_ns; //Timestamp of first packet
+    __u32 port_count; // number of unique ports hits
+    __u8 alerted; // 1 = alert already sent
+    __u8 pad[4]; 
+};
+
 //Packet event sent to userspace via ringbuf
 struct pkt_event {
     __u32 src_ip;

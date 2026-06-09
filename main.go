@@ -30,6 +30,14 @@ type PktEvent struct {
 	PktLen   uint32
 }
 
+// scan config
+type ScanConfig struct {
+	TimeWindowNs uint64
+	Threshold uint32
+	AutoBlock uint8
+	Pad [3]uint8
+}
+
 // TCP flag masks — must match common.h
 const (
 	TCP_FIN = 0x01
@@ -108,6 +116,39 @@ func tcpFlagString(flags uint8) string {
 }
 
 func main() {
+	// Setting defaults values for scan config 
+	timeWindow := 30  //seconds
+	threshold := 20 // ports
+	autoBlock := false
+	ifaceName := "eth0"
+	showTraffic := false
+	showStats := false
+
+	// Passing commmand line arguments
+	for i, arg := range os.Args[1:]{
+		switch arg {
+		case "--auto-block-network-scan":
+			autoBlock = true
+		case "--show-traffic":
+			showTraffic = true
+		case "--show-stats":
+			showStats = true
+		case "--time":
+			if i+2 < len(os.Args){
+				fmt.Scanf(os.Args[i+2], "%d", &timeWindow)
+			}
+		case "--threshold":
+			if i+2 < len(os.Args) {
+				fmt.Scanf(os.Args[i+2], "%d", &threshold)
+			}
+		default:
+			if arg[0] != '-' {
+				ifaceName = arg
+			}
+		}
+	}
+	fmt.Printf("Config: interface=%s time=%ds threshold=%d auto-block=%v\n", ifaceName, timeWindow, threshold, autoBlock)
+
 	// -------------------------------------------------------
 	// 1. Load the BPF object file
 	// -------------------------------------------------------
@@ -125,10 +166,10 @@ func main() {
 	// -------------------------------------------------------
 	// 2. Attach XDP program to the network interface
 	// -------------------------------------------------------
-	ifaceName := "eth0" // change this to match your interface
-	if len(os.Args) > 1 {
-		ifaceName = os.Args[1] // accept interface as CLI argument
-	}
+	//ifaceName := "eth0" // change this to match your interface
+	//if len(os.Args) > 1 {
+	//	ifaceName = os.Args[1] // accept interface as CLI argument
+	//}
 
 	iface, err := net.InterfaceByName(ifaceName)
 	if err != nil {
@@ -149,13 +190,36 @@ func main() {
 
 	fmt.Printf("XDP monitor attached to %s\n", ifaceName)
 	fmt.Println("Listening for packets... (Ctrl+C to stop)")
-	fmt.Println("─────────────────────────────────────────────────────────")
-	fmt.Printf("%-6s %-21s %-21s %-8s %-16s\n",
-		"PROTO", "SRC", "DST", "LEN", "FLAGS")
-	fmt.Println("─────────────────────────────────────────────────────────")
+	if showTraffic {
+		fmt.Println("─────────────────────────────────────────────────────────")
+		fmt.Printf("%-6s %-21s %-21s %-8s %-16s\n",
+			"PROTO", "SRC", "DST", "LEN", "FLAGS")
+		fmt.Println("─────────────────────────────────────────────────────────")
+	}
 
 	// Add tc monitor execution
-	go runTCMonitor(ifaceName)
+	go runTCMonitor(ifaceName, showTraffic)
+
+	// Writing the config into a BPF map
+	var autoBlockVal uint8
+	if autoBlock{
+		autoBlockVal = 1
+	}
+
+	cfg := ScanConfig{
+		TimeWindowNs: uint64(timeWindow) * 1_000_000_000, //convert to nanoseconds
+		Threshold: uint32(threshold),
+		AutoBlock: autoBlockVal,
+	}
+
+	cfgKey := uint(0)
+	if err := coll.Maps["block_config"].Put(
+		unsafe.Pointer(&cfgKey),
+		unsafe.Pointer(&cfg),
+	); err != nil {
+		log.Fatalf("Failed to write config: %v", err)
+	}
+
 
 	// block an IP
 	err = blockCidr("8.8.8.8/32", coll.Maps["blocklist"])
@@ -194,13 +258,15 @@ func main() {
 	// 5. Stats goroutine — print summary every 10 seconds
 	// -------------------------------------------------------
 	protoStats := coll.Maps["proto_stats"]
-	go func() {
-		ticker := time.NewTicker(10 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			printStats(protoStats)
-		}
-	}()
+	if showStats{
+		go func() {
+			ticker := time.NewTicker(10 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				printStats(protoStats)
+			}
+		}()
+	}
 
 	// ----------------------------------------------------------
 	// 5.5 Alert reader - prints message when IP is auto blocked
@@ -225,7 +291,11 @@ func main() {
 			}
 
 			ip := intToIP(srcIP)
-			fmt.Printf("\n ** ALERT : PORT SCAN DETECTED from %s - AUTO BLOCKED ****\n", ip)
+			if autoBlock == false {
+			       fmt.Printf("\n ** ALERT : PORT SCAN DETECTED from %s - NOT BLOCKED ****\n", ip)
+			} else {
+				fmt.Printf("\n ** ALERT : PORT SCAN DETECTED from %s - AUTO BLOCKED ****\n", ip)
+			}
 		}
 	}()
 
@@ -246,8 +316,9 @@ func main() {
 			log.Printf("Failed to parse event: %v", err)
 			continue
 		}
-
-		printEvent(&event)
+		if showTraffic {
+			printEvent(&event)
+		}
 	}
 
 	fmt.Println("Done.")

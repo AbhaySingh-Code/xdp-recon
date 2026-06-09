@@ -21,7 +21,7 @@ func attachTC(ifindex int, prog *ebpf.Program) (interface{ Close() error}, error
 }
 
 
-func runTCMonitor(ifaceName string){
+func runTCMonitor(ifaceName string, showTraffic bool){
 
 	// Load the bpf object
 	spec, err := ebpf.LoadCollectionSpec("tc_monitor/tc.bpf.o")
@@ -75,7 +75,9 @@ func runTCMonitor(ifaceName string){
 			continue
 		}
 
-		fmt.Printf("[EGRESS]")
-		printEvent(&event)
+		if showTraffic {
+			fmt.Printf("[EGRESS]")
+			printEvent(&event)
+		}
 	}
 }
