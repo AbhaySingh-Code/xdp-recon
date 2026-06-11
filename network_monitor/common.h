@@ -28,7 +28,9 @@ struct scan_entry {
     __u64 first_seen_ns; //Timestamp of first packet
     __u32 port_count; // number of unique ports hits
     __u8 alerted; // 1 = alert already sent
-    __u8 pad[4]; 
+    __u8 port_idx; //Current position in seen_ports ring
+    __u8 pad[2]; 
+    __u16 seen_ports[64]; //Last 64 unique ports seen
 };
 
 //Packet event sent to userspace via ringbuf

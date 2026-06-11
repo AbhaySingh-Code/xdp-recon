@@ -95,6 +95,7 @@ int xdp_monitor(struct xdp_md *ctx){
     // New Port Scan detection logic
     if (event.protocol == PROTO_TCP){
         __u32 src = event.src_ip;
+        __u16 dst_port = event.dst_port;
         __u64 now = bpf_ktime_get_ns();
 
         // only count syn packets - port scans use SYN to probe
@@ -111,7 +112,26 @@ int xdp_monitor(struct xdp_md *ctx){
         if (entry){
             // check if we are till within the time windows
             if ((now - entry->first_seen_ns) < cfg->time_windows_ns) {
+                //entry->port_count++;
+
+                //Check if this port was alerady seen
+                __u8 already_seen = 0;
+                for (int i = 0; i < 64; i ++){
+                    if (entry->seen_ports[i] == dst_port){
+                        already_seen = 1;
+                        break;
+                    }
+                }
+
+                if (already_seen)
+                    goto skip_scan;
+
+                // new port - add it 
+                __u8 idx = entry->port_idx & 63; //keep within bounds
+                entry->seen_ports[idx] = dst_port;
+                entry->port_idx = (idx + 1) & 63;
                 entry->port_count++;
+
                 if (entry->port_count > cfg->threshold &&!entry->alerted){
                     entry->alerted = 1;
                     //send alert
@@ -135,12 +155,18 @@ int xdp_monitor(struct xdp_md *ctx){
                 // time windows expired - reset the entry
                 entry->first_seen_ns = now;
                 entry->port_count = 1;
+                entry->alerted = 0;
+                entry->port_idx = 0;
+                entry->seen_ports[0] = dst_port;
+                goto skip_scan;
             }
         } else {
             // First packet from this IP - create entry
             struct scan_entry new_entry = {};
             new_entry.first_seen_ns = now;
             new_entry.port_count = 1;
+            new_entry.port_idx = 1;
+            new_entry.seen_ports[0] = dst_port;
             bpf_map_update_elem(&scan_tracker, &src, &new_entry, BPF_ANY);
         }
     }

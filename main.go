@@ -197,9 +197,6 @@ func main() {
 		fmt.Println("─────────────────────────────────────────────────────────")
 	}
 
-	// Add tc monitor execution
-	go runTCMonitor(ifaceName, showTraffic)
-
 	// Writing the config into a BPF map
 	var autoBlockVal uint8
 	if autoBlock{
@@ -212,7 +209,11 @@ func main() {
 		AutoBlock: autoBlockVal,
 	}
 
-	cfgKey := uint(0)
+	cfgKey := uint32(0)
+
+	// Add tc monitor execution
+	go runTCMonitor(ifaceName, showTraffic, &cfg)
+
 	if err := coll.Maps["block_config"].Put(
 		unsafe.Pointer(&cfgKey),
 		unsafe.Pointer(&cfg),

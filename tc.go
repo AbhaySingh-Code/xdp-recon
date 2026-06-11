@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"unsafe"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -21,7 +22,7 @@ func attachTC(ifindex int, prog *ebpf.Program) (interface{ Close() error}, error
 }
 
 
-func runTCMonitor(ifaceName string, showTraffic bool){
+func runTCMonitor(ifaceName string, showTraffic bool, cfg *ScanConfig){
 
 	// Load the bpf object
 	spec, err := ebpf.LoadCollectionSpec("tc_monitor/tc.bpf.o")
@@ -55,6 +56,43 @@ func runTCMonitor(ifaceName string, showTraffic bool){
 	fmt.Printf("TC egress monitor attached to %s\n", ifaceName)
 	fmt.Printf("Watching Outbound traffic ...... \n")
 	fmt.Println("------------------------------------------------------------")
+
+	cfgKey := uint32(0)
+	if err := coll.Maps["egress_block_config"].Put(
+		unsafe.Pointer(&cfgKey),
+		unsafe.Pointer(cfg),
+	); err != nil {
+		log.Printf("Failed to write egress config: %v", err)
+	}
+
+	// Go function to block output nmap scan and alert
+	go func(cfg *ScanConfig){
+		ard, err := ringbuf.NewReader(coll.Maps["egress_alerts"])
+		if err != nil {
+			log.Printf("egress alerts ringbuf: %v", err)
+			return
+		}
+		defer ard.Close()
+
+		for {
+			record, err := ard.Read()
+			if err != nil {
+				break
+			}
+
+			var dstIP uint32
+			if err := binary.Read(bytes.NewReader(record.RawSample), binary.LittleEndian, &dstIP); err != nil {
+				continue
+			}
+
+			ip := intToIP(dstIP)
+			if cfg.AutoBlock == 1 {
+				fmt.Printf("\n*** ALERT: YOUR MACHING IS SCANNING %s - AUTO BLOCKED **\n\n", ip)
+			} else {
+				fmt.Printf("\n*** ALERT: YOUR MACHINE IS SCANNING %s - NOT BLOCKED", ip)
+			}
+		}
+	}(cfg)
 
 	// Open egress ring buffer
 	rd, err := ringbuf.NewReader(coll.Maps["egress_events"])
